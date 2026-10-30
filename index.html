@@ -172,8 +172,8 @@ const BLUR = {
 const METHOD = {
   inverse:  {p:[{id:'eps', label:'保护阈值 ε（越小越“纯粹”地除回去）', min:0.0001, max:0.3, step:0.0001, val:0.001, log:true}],
              hint:'把模糊看成“每种粗细的细节被缩小了若干倍”，逆滤波就是把每种细节原样放大回去。被缩得几乎为 0 的细节需要放大极多倍，噪声也会被同样放大。'},
-  wiener:   {p:[{id:'K', label:'参数 K（≈ 噪声强度 / 信号强度）', min:0.00001, max:1, step:0.00001, val:0.0005, log:true}],
-             hint:'对每种细节先看“信号比噪声强多少”：信号可靠就放大，主要是噪声就少放大。K 越大越保守（更稳但更糊），K 越小越激进（更锐但更多噪点）。'},
+  wiener:   {p:[{id:'K', label:'参数 K（≈ 噪声强度 / 信号强度）', min:0.00001, max:1, step:0.00001, val:0.0003, log:true}],
+             hint:'对每种细节先看“信号比噪声强多少”：信号可靠就放大，主要是噪声就少放大。照片里粗的结构信号强、细的细节信号弱（这是自然图像的统计规律），所以越细的细节放大得越谨慎。K 越大越保守（更稳但更糊），K 越小越激进（更锐但更多噪点）。'},
   tikhonov: {p:[{id:'lam', label:'正则化强度 λ（越大越平滑）', min:0.00001, max:1, step:0.00001, val:0.0005, log:true}],
              hint:'在“和观测吻合”之外再加一条要求：结果不要有太多剧烈的亮度跳变。这相当于事先相信“自然图像大部分地方是平滑的”。'},
   rl:       {p:[{id:'it', label:'迭代次数', min:1, max:300, step:1, val:20}],
@@ -340,17 +340,19 @@ function estKernel(){
   const t=$('estType').value, ker=makeKernel(t,readParams($('estParams'),BLUR[t]));
   return {ker, F:kernelFFT(ker,stage.P,stage.Q)};
 }
+function gradPow(P,Q){ const G=new Float64Array(P*Q);
+  for(let v=0;v<Q;v++) for(let u=0;u<P;u++) G[v*P+u]=4-2*Math.cos(2*Math.PI*u/P)-2*Math.cos(2*Math.PI*v/Q); return G; }
 function laplacianPow(P,Q){ const L=new Float64Array(P*Q);
   for(let v=0;v<Q;v++) for(let u=0;u<P;u++){ const a=4-2*Math.cos(2*Math.PI*u/P)-2*Math.cos(2*Math.PI*v/Q); L[v*P+u]=a*a; } return L; }
 function freqDeblur(method,p,F){
-  const {P,Q}=stage, N=P*Q, out=[]; const L = method==='tikhonov'?laplacianPow(P,Q):null;
+  const {P,Q}=stage, N=P*Q, out=[]; const L = method==='tikhonov'?laplacianPow(P,Q):(method==='wiener'?gradPow(P,Q):null);
   for(const Yc of stage.Y){
     const re=new Float64Array(N), im=new Float64Array(N);
     for(let i=0;i<N;i++){
       const hr=F.re[i], hi=F.im[i], h2=hr*hr+hi*hi, yr=Yc.re[i], yi=Yc.im[i];
       let den;
       if(method==='inverse'){ den=Math.max(h2,p.eps*p.eps); }
-      else if(method==='wiener'){ den=h2+p.K; }
+      else if(method==='wiener'){ den=h2+p.K*L[i]; }   // 噪声/信号功率比 ∝ f²：自然图像的功率谱大致按 1/f² 衰减
       else { den=h2+p.lam*L[i]; }
       if(den<1e-300){ re[i]=0; im[i]=0; continue; }
       re[i]=(hr*yr+hi*yi)/den; im[i]=(hr*yi-hi*yr)/den;   // conj(H)·Y / den
