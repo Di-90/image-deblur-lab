@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图像去模糊实验室</title>
+<style>
+  :root{--blue:#0054A6;--deep:#004471;--orange:#EF7E00;--red:#DF0017;--bg:#f3f6fa;--card:#fff;--line:#dde4ee;--text:#1f2937;--muted:#64748b;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);line-height:1.6;}
+  header.appbar{background:linear-gradient(120deg,var(--deep),var(--blue) 60%,#2a7fd4);color:#fff;padding:18px 20px 16px;}
+  header.appbar h1{margin:0;font-size:22px;font-weight:600;letter-spacing:.5px;}
+  header.appbar p{margin:4px 0 0;font-size:13.5px;opacity:.9;}
+  main{max-width:1180px;margin:0 auto;padding:16px;}
+  .desc{background:#e8f1fb;border-left:4px solid var(--blue);border-radius:6px;padding:10px 14px;font-size:14px;margin-bottom:14px;}
+  .desc b{color:var(--deep);}
+  .layout{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:14px;align-items:start;}
+  @media(max-width:860px){.layout{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+  .card h2{font-size:16px;margin:0 0 10px;color:var(--deep);display:flex;align-items:center;gap:8px;}
+  .step{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font-size:13px;align-items:center;justify-content:center;flex:none;}
+  label.row{display:block;font-size:14px;margin:8px 0 4px;color:#334155;}
+  select,input[type=number]{font:inherit;font-size:14px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;}
+  select{width:100%;}
+  .slider{display:flex;align-items:center;gap:8px;}
+  .slider input[type=range]{flex:1;accent-color:var(--blue);}
+  .slider input[type=number]{width:84px;}
+  .hint{font-size:12.5px;color:var(--muted);margin:3px 0 0;}
+  .btn{display:inline-block;font:inherit;font-size:14px;padding:7px 12px;border-radius:6px;border:1px solid var(--blue);background:var(--blue);color:#fff;cursor:pointer;}
+  .btn.ghost{background:#fff;color:var(--blue);}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .check{font-size:14px;display:flex;align-items:flex-start;gap:6px;margin-top:10px;}
+  .check input{margin-top:5px;}
+  .sub{border-top:1px dashed var(--line);margin-top:10px;padding-top:4px;}
+  .panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+  @media(max-width:620px){.panels{grid-template-columns:1fr;}}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center;}
+  .panel h3{margin:2px 0 6px;font-size:14.5px;}
+  .panel canvas{width:100%;height:auto;display:block;border-radius:4px;background:#eef2f7;cursor:zoom-in;}
+  .metric{font-size:13px;color:var(--muted);margin-top:6px;min-height:20px;}
+  .metric b{color:var(--text);}
+  .metric .up{color:#15803d;font-weight:600;}
+  .metric .down{color:var(--red);font-weight:600;}
+  .kernels{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;align-items:flex-start;}
+  .kbox{text-align:center;font-size:13px;color:#334155;}
+  .kbox canvas{width:96px;height:96px;image-rendering:pixelated;border:1px solid var(--line);border-radius:4px;background:#000;display:block;margin:0 auto 4px;}
+  .status{font-size:13px;color:var(--orange);min-height:20px;margin:6px 0 0;}
+  .tips{font-size:14px;}
+  .tips ol{margin:4px 0;padding-left:20px;}
+  .tips li{margin:3px 0;}
+  #overlay{position:fixed;inset:0;background:rgba(15,23,42,.88);display:none;align-items:center;justify-content:center;flex-direction:column;z-index:10;padding:12px;}
+  #overlay img{max-width:96vw;max-height:84vh;image-rendering:pixelated;background:#fff;}
+  #overlay p{color:#e2e8f0;font-size:14px;margin:8px 0 0;}
+  footer{text-align:center;font-size:12.5px;color:var(--muted);padding:6px 0 22px;}
+</style>
+</head>
+<body>
+<header class="appbar">
+  <h1>图像去模糊实验室</h1>
+  <p>无处不在的统计 · 新生研讨课配套小工具</p>
+</header>
+<main>
+  <div class="desc">
+    模糊模型：<b>观测图像 = 模糊核 ⊛ 理想图像 + 噪声</b>（⊛ 表示“按模糊核做加权平均”，即卷积）。先给图片“弄糊”，再选一种方法把它“变回来”，看看噪声和“猜错模糊核”会带来什么麻烦。
+    图片只在你自己的浏览器里处理，<b>不会上传</b>到任何服务器。
+  </div>
+
+  <div class="layout">
+    <div>
+      <section class="card">
+        <h2><span class="step">1</span>选择图片</h2>
+        <select id="sample">
+          <option value="text" selected>示例图：文字与细线</option>
+          <option value="pattern">示例图：几何测试图</option>
+          <option value="stars">示例图：星空（点光源）</option>
+          <option value="upload">上传自己的照片…</option>
+        </select>
+        <input type="file" id="file" accept="image/*" style="display:none">
+        <div class="btns"><button class="btn ghost" id="pickBtn">上传 / 拍一张照片</button></div>
+        <label class="row" for="maxSide">处理分辨率（长边像素）</label>
+        <select id="maxSide">
+          <option value="200">200（最快）</option>
+          <option value="256" selected>256（手机推荐）</option>
+          <option value="384">384（较慢）</option>
+        </select>
+        <label class="check"><input type="checkbox" id="gray"><span>转成黑白（灰度）图处理（速度约快 3 倍）</span></label>
+        <p class="hint" id="imgInfo"></p>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span>把图片“弄糊”</h2>
+        <select id="blurType">
+          <option value="motion">运动模糊（手抖 / 物体在动）</option>
+          <option value="defocus">失焦模糊（没对上焦）</option>
+          <option value="gauss">高斯模糊（大气、镜头等综合效果）</option>
+        </select>
+        <div id="blurParams"></div>
+        <label class="row" for="noise_n">噪声标准差 σ（0 = 完全没有噪声）</label>
+        <div class="slider"><input type="range" id="noise_r" min="0" max="20" step="0.1" value="1"><input type="number" id="noise_n" min="0" max="20" step="0.1" value="1"></div>
+        <p class="hint">真实相机一定有噪声。σ = 1 相当于 0~255 的亮度上平均只差 1，人眼几乎看不出来。</p>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span>选择去模糊方法</h2>
+        <select id="method">
+          <option value="inverse">逆滤波（直接“除回去”）</option>
+          <option value="wiener" selected>维纳滤波（按信噪比决定放大多少）</option>
+          <option value="tikhonov">正则化（额外要求结果“别太毛躁”）</option>
+          <option value="rl">Richardson–Lucy 迭代（按泊松统计一步步逼近）</option>
+          <option value="none">不处理</option>
+        </select>
+        <div id="methodParams"></div>
+        <p class="hint" id="methodHint"></p>
+        <div class="sub">
+          <label class="check"><input type="checkbox" id="useTrue" checked><span>去模糊时使用<b>真实</b>的模糊核（取消勾选，可以自己“猜”一个核）</span></label>
+          <div id="estWrap" style="display:none">
+            <label class="row" for="estType">猜测的模糊类型</label>
+            <select id="estType">
+              <option value="motion">运动模糊</option>
+              <option value="defocus">失焦模糊</option>
+              <option value="gauss">高斯模糊</option>
+            </select>
+            <div id="estParams"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div>
+      <section class="card">
+        <h2><span class="step">4</span>结果对比 <span class="hint" style="font-weight:normal">（点图片可放大看细节）</span></h2>
+        <div class="panels">
+          <div class="panel"><h3>原图</h3><canvas id="cOrig"></canvas><div class="metric">理想图像（“真相”）</div></div>
+          <div class="panel"><h3>模糊图</h3><canvas id="cBlur"></canvas><div class="metric" id="mBlur"></div></div>
+          <div class="panel"><h3>去模糊结果</h3><canvas id="cDeb"></canvas><div class="metric" id="mDeb"></div></div>
+        </div>
+        <div class="kernels">
+          <div class="kbox"><canvas id="kTrue" width="96" height="96"></canvas>真实模糊核</div>
+          <div class="kbox"><canvas id="kEst" width="96" height="96"></canvas>去模糊用的核</div>
+          <p class="hint" style="flex:1;min-width:200px;margin:0">模糊核（点扩散函数）＝一个亮点被拍糊以后的样子：亮的地方表示这个点的光被“摊”到了哪里。选“星空”示例图，可以看到每颗星星都变成了这个形状。</p>
+        </div>
+        <p class="status" id="status"></p>
+        <div class="btns"><button class="btn" id="dlBtn">下载去模糊结果</button></div>
+        <p class="hint">PSNR（峰值信噪比）衡量图像和原图有多接近，单位 dB，<b>越大越接近原图</b>；箭头表示比模糊图提高或降低了多少。</p>
+      </section>
+
+      <section class="card tips">
+        <h2>动手试一试</h2>
+        <ol>
+          <li><b>没有噪声，一切完美？</b>把噪声 σ 调到 0，选“逆滤波”；再把 σ 调到 0.5、1，结果发生了什么？</li>
+          <li><b>找最佳平衡：</b>选“维纳滤波”，把参数 K 从很小调到很大，画面怎样从“噪点爆炸”变成“仍然很糊”？PSNR 最高时 K 大约是多少？噪声变大后最佳 K 怎么变？</li>
+          <li><b>迭代越多越好吗？</b>选“Richardson–Lucy”，迭代次数取 10、50、200，观察清晰度和噪点的变化。</li>
+          <li><b>猜错模糊核：</b>取消“使用真实模糊核”，把猜测的长度比真实值短或长 5 像素、或角度偏 20°，看看结果。</li>
+          <li><b>哪种模糊更难救？</b>比较运动模糊、失焦模糊、高斯模糊在同样噪声下的恢复效果。</li>
+        </ol>
+      </section>
+    </div>
+  </div>
+</main>
+<footer>北京信息科技大学 · 何迪 · 图像信息处理中的统计</footer>
+<div id="overlay"><img id="ovImg" alt=""><p id="ovCap"></p><p>点击任意位置关闭</p></div>
+
+<script>
+"use strict";
+// ---------- 参数定义 ----------
+const BLUR = {
+  motion:  [{id:'len', label:'运动长度（像素）', min:1, max:40, step:1, val:15},
+            {id:'ang', label:'运动方向（度，0 = 水平）', min:0, max:180, step:1, val:20}],
+  defocus: [{id:'rad', label:'失焦光斑半径（像素）', min:1, max:15, step:0.5, val:4}],
+  gauss:   [{id:'sig', label:'高斯核 σ（像素）', min:0.5, max:8, step:0.1, val:2.5}]
+};
+const METHOD = {
+  inverse:  {p:[{id:'eps', label:'保护阈值 ε（越小越“纯粹”地除回去）', min:0.0001, max:0.3, step:0.0001, val:0.001, log:true}],
+             hint:'把模糊看成“每种粗细的细节被缩小了若干倍”，逆滤波就是把每种细节原样放大回去。被缩得几乎为 0 的细节需要放大极多倍，噪声也会被同样放大。'},
+  wiener:   {p:[{id:'K', label:'参数 K（≈ 噪声强度 / 信号强度）', min:0.00001, max:1, step:0.00001, val:0.0005, log:true}],
+             hint:'对每种细节先看“信号比噪声强多少”：信号可靠就放大，主要是噪声就少放大。K 越大越保守（更稳但更糊），K 越小越激进（更锐但更多噪点）。'},
+  tikhonov: {p:[{id:'lam', label:'正则化强度 λ（越大越平滑）', min:0.00001, max:1, step:0.00001, val:0.0005, log:true}],
+             hint:'在“和观测吻合”之外再加一条要求：结果不要有太多剧烈的亮度跳变。这相当于事先相信“自然图像大部分地方是平滑的”。'},
+  rl:       {p:[{id:'it', label:'迭代次数', min:1, max:300, step:1, val:20}],
+             hint:'天文学家常用的方法：假设光子数服从泊松分布，每一步都让“把当前结果再弄糊”更接近观测。迭代太多会把噪声也当成细节“恢复”出来。每 5 次迭代刷新一次画面，手机上较慢请耐心等待。'},
+  none:     {p:[], hint:'不做任何处理，去模糊结果 = 模糊图。'}
+};
+
+const $ = id => document.getElementById(id);
+let orig=null, srcObj=null, stage=null, seed=20261030, job=0, timer=null;
+
+// ---------- 控件（滑块+数字框双向同步，可选对数刻度） ----------
+function buildParams(container, defs, onChange){
+  container.innerHTML='';
+  for(const d of defs){
+    const lab=document.createElement('label'); lab.className='row'; lab.textContent=d.label; lab.htmlFor=container.id+'_'+d.id;
+    const wrap=document.createElement('div'); wrap.className='slider';
+    const r=document.createElement('input'); r.type='range';
+    const n=document.createElement('input'); n.type='number'; n.id=container.id+'_'+d.id; n.min=d.min; n.max=d.max; n.step=d.step; n.value=d.val;
+    if(d.log){ r.min=0; r.max=1000; r.step=1; r.value=toLog(d.val,d); } else { r.min=d.min; r.max=d.max; r.step=d.step; r.value=d.val; }
+    r.addEventListener('input',()=>{ n.value = d.log ? fmt(fromLog(+r.value,d)) : r.value; onChange(); });
+    n.addEventListener('input',()=>{ const v=+n.value; if(isFinite(v)&&v>=d.min&&v<=d.max){ r.value=d.log?toLog(v,d):v; onChange(); } });
+    n.addEventListener('change',()=>{ let v=+n.value; if(!isFinite(v)) v=d.val; v=Math.min(d.max,Math.max(d.min,v)); n.value=v; r.value=d.log?toLog(v,d):v; onChange(); });
+    wrap.append(r,n); container.append(lab,wrap);
+  }
+}
+function toLog(v,d){ return Math.round(1000*Math.log(v/d.min)/Math.log(d.max/d.min)); }
+function fromLog(t,d){ return d.min*Math.pow(d.max/d.min,t/1000); }
+function fmt(v){ return v>=0.1? +v.toFixed(3) : +v.toPrecision(2); }
+function readParams(container, defs){ const o={}; for(const d of defs) o[d.id]=+$(container.id+'_'+d.id).value; return o; }
+
+// ---------- FFT（基 2，原地） ----------
+const fftCache={};
+function fftPlan(n){
+  if(fftCache[n]) return fftCache[n];
+  const rev=new Uint32Array(n); let bits=Math.log2(n);
+  for(let i=0;i<n;i++){ let r=0,x=i; for(let b=0;b<bits;b++){ r=(r<<1)|(x&1); x>>=1; } rev[i]=r; }
+  const cs=new Float64Array(n/2), sn=new Float64Array(n/2);
+  for(let i=0;i<n/2;i++){ cs[i]=Math.cos(2*Math.PI*i/n); sn[i]=Math.sin(2*Math.PI*i/n); }
+  return fftCache[n]={rev,cs,sn};
+}
+function fft1(re,im,inv){
+  const n=re.length, {rev,cs,sn}=fftPlan(n);
+  for(let i=0;i<n;i++){ const j=rev[i]; if(j>i){ let t=re[i]; re[i]=re[j]; re[j]=t; t=im[i]; im[i]=im[j]; im[j]=t; } }
+  for(let size=2; size<=n; size<<=1){
+    const half=size>>1, step=n/size;
+    for(let i=0;i<n;i+=size){
+      for(let j=0,k=0;j<half;j++,k+=step){
+        const wr=cs[k], wi=inv?sn[k]:-sn[k];
+        const a=i+j, b=a+half;
+        const tr=wr*re[b]-wi*im[b], ti=wr*im[b]+wi*re[b];
+        re[b]=re[a]-tr; im[b]=im[a]-ti; re[a]+=tr; im[a]+=ti;
+      }
+    }
+  }
+  if(inv){ for(let i=0;i<n;i++){ re[i]/=n; im[i]/=n; } }
+}
+function fft2(re,im,W,H,inv){
+  for(let y=0;y<H;y++) fft1(re.subarray(y*W,(y+1)*W), im.subarray(y*W,(y+1)*W), inv);
+  const cr=new Float64Array(H), ci=new Float64Array(H);
+  for(let x=0;x<W;x++){
+    for(let y=0;y<H;y++){ cr[y]=re[y*W+x]; ci[y]=im[y*W+x]; }
+    fft1(cr,ci,inv);
+    for(let y=0;y<H;y++){ re[y*W+x]=cr[y]; im[y*W+x]=ci[y]; }
+  }
+}
+const nextPow2 = n => { let p=1; while(p<n) p<<=1; return p; };
+
+// ---------- 模糊核 ----------
+function makeKernel(type,p){
+  let r, k;
+  if(type==='motion'){
+    const L=Math.max(1,p.len), a=p.ang*Math.PI/180; r=Math.ceil(L/2)+1; const s=2*r+1; k=new Float64Array(s*s);
+    const steps=Math.max(2,Math.ceil(L*10));
+    for(let i=0;i<=steps;i++){ const t=-L/2+L*i/steps; const x=t*Math.cos(a)+r, y=-t*Math.sin(a)+r;
+      const x0=Math.floor(x), y0=Math.floor(y), fx=x-x0, fy=y-y0;
+      const add=(xx,yy,w)=>{ if(xx>=0&&xx<s&&yy>=0&&yy<s) k[yy*s+xx]+=w; };
+      add(x0,y0,(1-fx)*(1-fy)); add(x0+1,y0,fx*(1-fy)); add(x0,y0+1,(1-fx)*fy); add(x0+1,y0+1,fx*fy); }
+  } else if(type==='defocus'){
+    const R=p.rad; r=Math.ceil(R)+1; const s=2*r+1; k=new Float64Array(s*s); const ss=5;
+    for(let y=0;y<s;y++) for(let x=0;x<s;x++){ let c=0;
+      for(let u=0;u<ss;u++) for(let v=0;v<ss;v++){ const dx=x-r+(u+0.5)/ss-0.5, dy=y-r+(v+0.5)/ss-0.5; if(dx*dx+dy*dy<=R*R) c++; }
+      k[y*s+x]=c; }
+  } else {
+    const sg=p.sig; r=Math.max(1,Math.ceil(3*sg)); const s=2*r+1; k=new Float64Array(s*s);
+    for(let y=0;y<s;y++) for(let x=0;x<s;x++) k[y*s+x]=Math.exp(-((x-r)**2+(y-r)**2)/(2*sg*sg));
+  }
+  let t=0; for(const v of k) t+=v; for(let i=0;i<k.length;i++) k[i]/=t;
+  return {r, s:2*r+1, k};
+}
+function kernelFFT(ker,P,Q){
+  const re=new Float64Array(P*Q), im=new Float64Array(P*Q);
+  for(let y=0;y<ker.s;y++) for(let x=0;x<ker.s;x++){ const v=ker.k[y*ker.s+x]; if(!v) continue;
+    const xx=((x-ker.r)%P+P)%P, yy=((y-ker.r)%Q+Q)%Q; re[yy*P+xx]+=v; }
+  fft2(re,im,P,Q,false); return {re,im};
+}
+function drawKernel(ker,cv){
+  const s=ker.s, c=document.createElement('canvas'); c.width=s; c.height=s; const ctx=c.getContext('2d'), d=ctx.createImageData(s,s);
+  let m=0; for(const v of ker.k) m=Math.max(m,v);
+  for(let i=0;i<s*s;i++){ const v=Math.round(255*Math.pow(ker.k[i]/m,0.6)); d.data[4*i]=d.data[4*i+1]=d.data[4*i+2]=v; d.data[4*i+3]=255; }
+  ctx.putImageData(d,0,0);
+  const g=cv.getContext('2d'); g.imageSmoothingEnabled=false; g.fillStyle='#000'; g.fillRect(0,0,cv.width,cv.height);
+  const z=Math.max(1,Math.floor(cv.width/Math.max(s,9))), w=s*z; g.drawImage(c,(cv.width-w)/2,(cv.height-w)/2,w,w);
+}
+
+// ---------- 随机数 ----------
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gaussRng(rand){ return function(){ let u=0; while(u===0) u=rand(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*rand()); }; }
+
+// ---------- 图像工具 ----------
+const clamp255 = v => v<0?0:(v>255?255:v);
+function fromCanvas(cv,gray){
+  const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data, N=cv.width*cv.height;
+  const ch = gray?[new Float64Array(N)]:[new Float64Array(N),new Float64Array(N),new Float64Array(N)];
+  for(let i=0;i<N;i++){ if(gray) ch[0][i]=0.299*d[4*i]+0.587*d[4*i+1]+0.114*d[4*i+2]; else { ch[0][i]=d[4*i]; ch[1][i]=d[4*i+1]; ch[2][i]=d[4*i+2]; } }
+  return {w:cv.width,h:cv.height,c:ch};
+}
+function draw(im,cv){
+  cv.width=im.w; cv.height=im.h; const ctx=cv.getContext('2d'), out=ctx.createImageData(im.w,im.h), d=out.data, N=im.w*im.h;
+  for(let i=0;i<N;i++){
+    if(im.c.length===1){ const v=Math.round(clamp255(im.c[0][i])); d[4*i]=d[4*i+1]=d[4*i+2]=v; }
+    else { d[4*i]=Math.round(clamp255(im.c[0][i])); d[4*i+1]=Math.round(clamp255(im.c[1][i])); d[4*i+2]=Math.round(clamp255(im.c[2][i])); }
+    d[4*i+3]=255; }
+  ctx.putImageData(out,0,0);
+}
+function psnr(a,b){ let s=0,n=0;
+  for(let ch=0;ch<a.c.length;ch++){ const x=a.c[ch], y=b.c[ch]; for(let i=0;i<x.length;i++){ const e=clamp255(x[i])-clamp255(y[i]); s+=e*e; } n+=x.length; }
+  const mse=s/n; return mse<1e-10?Infinity:10*Math.log10(255*255/mse); }
+function fmtPsnr(v){ return isFinite(v)?`PSNR = <b>${v.toFixed(2)} dB</b>`:'与原图完全相同'; }
+
+// ---------- 第一阶段：在“镜像延拓”的大画布上做模糊＋加噪声 ----------
+// 为避免 FFT 循环卷积在图像边缘“串到对边”，先把图像镜像延拓到 2 的幂大小再处理，最后只显示中间原尺寸部分。
+function refl(i,n){ while(i<0||i>=n){ if(i<0) i=-i-1; if(i>=n) i=2*n-i-1; } return i; }
+function buildStage(){
+  const bt=$('blurType').value, kt=makeKernel(bt,readParams($('blurParams'),BLUR[bt]));
+  const sigma=+$('noise_n').value;
+  const m=Math.max(kt.r,24)+8, P=nextPow2(orig.w+2*m), Q=nextPow2(orig.h+2*m);
+  const ox=Math.floor((P-orig.w)/2), oy=Math.floor((Q-orig.h)/2);
+  const Kt=kernelFFT(kt,P,Q), grand=gaussRng(mulberry32(seed));
+  const Y=[], ys=[];
+  for(const src of orig.c){
+    const re=new Float64Array(P*Q), im=new Float64Array(P*Q);
+    for(let y=0;y<Q;y++){ const sy=refl(y-oy,orig.h); for(let x=0;x<P;x++) re[y*P+x]=src[sy*orig.w+refl(x-ox,orig.w)]; }
+    fft2(re,im,P,Q,false);
+    for(let i=0;i<P*Q;i++){ const a=re[i],b=im[i]; re[i]=a*Kt.re[i]-b*Kt.im[i]; im[i]=a*Kt.im[i]+b*Kt.re[i]; }
+    fft2(re,im,P,Q,true);
+    for(let i=0;i<P*Q;i++) re[i]+=sigma*grand();
+    ys.push(re.slice());
+    im.fill(0); fft2(re,im,P,Q,false); Y.push({re,im});
+  }
+  stage={P,Q,ox,oy,kt,Kt,Y,ys};
+  const blurred=crop(ys); draw(blurred,$('cBlur')); stage.blurred=blurred;
+  stage.psnrBlur=psnr(orig,blurred); $('mBlur').innerHTML=fmtPsnr(stage.psnrBlur);
+  drawKernel(kt,$('kTrue'));
+}
+function crop(planes){
+  const {P,ox,oy}=stage; const c=planes.map(pl=>{ const a=new Float64Array(orig.w*orig.h);
+    for(let y=0;y<orig.h;y++) for(let x=0;x<orig.w;x++) a[y*orig.w+x]=pl[(y+oy)*P+x+ox]; return a; });
+  return {w:orig.w,h:orig.h,c};
+}
+
+// ---------- 第二阶段：去模糊 ----------
+function estKernel(){
+  if($('useTrue').checked) return {ker:stage.kt, F:stage.Kt};
+  const t=$('estType').value, ker=makeKernel(t,readParams($('estParams'),BLUR[t]));
+  return {ker, F:kernelFFT(ker,stage.P,stage.Q)};
+}
+function laplacianPow(P,Q){ const L=new Float64Array(P*Q);
+  for(let v=0;v<Q;v++) for(let u=0;u<P;u++){ const a=4-2*Math.cos(2*Math.PI*u/P)-2*Math.cos(2*Math.PI*v/Q); L[v*P+u]=a*a; } return L; }
+function freqDeblur(method,p,F){
+  const {P,Q}=stage, N=P*Q, out=[]; const L = method==='tikhonov'?laplacianPow(P,Q):null;
+  for(const Yc of stage.Y){
+    const re=new Float64Array(N), im=new Float64Array(N);
+    for(let i=0;i<N;i++){
+      const hr=F.re[i], hi=F.im[i], h2=hr*hr+hi*hi, yr=Yc.re[i], yi=Yc.im[i];
+      let den;
+      if(method==='inverse'){ den=Math.max(h2,p.eps*p.eps); }
+      else if(method==='wiener'){ den=h2+p.K; }
+      else { den=h2+p.lam*L[i]; }
+      if(den<1e-300){ re[i]=0; im[i]=0; continue; }
+      re[i]=(hr*yr+hi*yi)/den; im[i]=(hr*yi-hi*yr)/den;   // conj(H)·Y / den
+    }
+    fft2(re,im,P,Q,true); out.push(re);
+  }
+  return crop(out);
+}
+// 模糊核是实数：把两个实数通道装进一个复数做 FFT（实部、虚部各算一个通道），一次卷积顶两次
+function convPair(a,b,F,conj){ const {P,Q}=stage, N=P*Q, re=a.slice(), im=b?b.slice():new Float64Array(N);
+  fft2(re,im,P,Q,false);
+  for(let i=0;i<N;i++){ const x=re[i],y=im[i],hr=F.re[i],hi=conj?-F.im[i]:F.im[i]; re[i]=x*hr-y*hi; im[i]=x*hi+y*hr; }
+  fft2(re,im,P,Q,true); return [re,im]; }
+function convAll(xs,F,conj){ const out=[];
+  for(let c=0;c<xs.length;c+=2){ const [r,i]=convPair(xs[c],xs[c+1]||null,F,conj); out.push(r); if(c+1<xs.length) out.push(i); }
+  return out; }
+function runRL(iters,F,myJob){
+  const N=stage.P*stage.Q, ys=stage.ys.map(y=>{ const a=new Float64Array(N); for(let i=0;i<N;i++) a[i]=Math.max(y[i],0); return a; });
+  let xs=ys.map(y=>{ const a=new Float64Array(N); for(let i=0;i<N;i++) a[i]=Math.max(y[i],1); return a; });
+  let it=0; const t0=performance.now();
+  const chunk=()=>{
+    if(myJob!==job) return;
+    const until=Math.min(iters,it+5);
+    for(;it<until;it++){
+      const est=convAll(xs,F,false);
+      const ratio=est.map((e,c)=>{ const r=new Float64Array(N); for(let i=0;i<N;i++) r[i]=ys[c][i]/Math.max(e[i],1e-3); return r; });
+      const corr=convAll(ratio,F,true);
+      xs=xs.map((x,c)=>{ const nx=new Float64Array(N), cc=corr[c]; for(let i=0;i<N;i++) nx[i]=x[i]*Math.max(cc[i],0); return nx; });
+    }
+    show(crop(xs));
+    if(it<iters){ $('status').textContent=`迭代中… ${it} / ${iters}`; setTimeout(chunk,0); }
+    else $('status').textContent=`完成 ${iters} 次迭代，用时 ${((performance.now()-t0)/1000).toFixed(1)} 秒`;
+  };
+  chunk();
+}
+function show(res){
+  draw(res,$('cDeb')); const v=psnr(orig,res), v0=stage.psnrBlur; let html=fmtPsnr(v);
+  if(isFinite(v)&&isFinite(v0)){ const d=v-v0; html+= d>=0?` <span class="up">↑${d.toFixed(2)}</span>`:` <span class="down">↓${(-d).toFixed(2)}</span>`; }
+  $('mDeb').innerHTML=html;
+}
+function runDeblur(){
+  if(!stage) return; const myJob=++job;
+  const m=$('method').value, p=readParams($('methodParams'),METHOD[m].p), E=estKernel();
+  drawKernel(E.ker,$('kEst'));
+  if(m==='none'){ show(stage.blurred); $('status').textContent=''; return; }
+  if(m==='rl'){ runRL(Math.round(p.it),E.F,myJob); return; }
+  const t0=performance.now(); show(freqDeblur(m,p,E.F));
+  $('status').textContent=`用时 ${(performance.now()-t0).toFixed(0)} ms`;
+}
+
+// ---------- 调度 ----------
+function schedule(full){ clearTimeout(timer); job++; $('status').textContent='计算中…';
+  timer=setTimeout(()=>{ if(!orig) return; if(full||!stage) buildStage(); runDeblur(); },40); }
+
+// ---------- 示例图 ----------
+function makeSample(kind){
+  const W=480,H=330,cv=document.createElement('canvas'); cv.width=W; cv.height=H; const g=cv.getContext('2d');
+  if(kind==='pattern'){
+    const sky=g.createLinearGradient(0,0,0,H); sky.addColorStop(0,'#5b9bd5'); sky.addColorStop(1,'#e8f1fb'); g.fillStyle=sky; g.fillRect(0,0,W,H);
+    g.fillStyle='#f2c14e'; g.beginPath(); g.arc(390,68,39,0,2*Math.PI); g.fill();
+    g.fillStyle='#3a7d44'; g.beginPath(); g.moveTo(0,248); g.lineTo(112,142); g.lineTo(210,225); g.lineTo(315,128); g.lineTo(480,240); g.lineTo(480,330); g.lineTo(0,330); g.fill();
+    g.fillStyle='#8c4b2f'; g.fillRect(52,202,112,90); g.fillStyle='#c0392b'; g.beginPath(); g.moveTo(41,204); g.lineTo(108,154); g.lineTo(176,204); g.fill();
+    g.fillStyle='#fdf6e3'; g.fillRect(75,225,27,27); g.fillRect(120,225,27,27); g.fillStyle='#4a2c1a'; g.fillRect(99,255,21,37);
+    for(let i=0;i<8;i++){ g.fillStyle=i%2?'#222':'#fafafa'; g.fillRect(248+i*22,248,22,68); }
+    g.fillStyle='#0054A6'; g.beginPath(); g.arc(352,161,25,0,2*Math.PI); g.fill(); g.fillStyle='#EF7E00'; g.fillRect(188,161,37,37);
+  } else if(kind==='stars'){
+    g.fillStyle='#000'; g.fillRect(0,0,W,H); const rand=mulberry32(7);
+    for(let i=0;i<70;i++){ const x=8+rand()*(W-16), y=8+rand()*(H-16), b=60+rand()*195; g.fillStyle=`rgb(${b},${b},${Math.min(255,b+20)})`; g.fillRect(Math.round(x),Math.round(y),1,1); }
+    for(let i=0;i<6;i++){ const x=30+rand()*(W-60), y=30+rand()*(H-60); g.fillStyle='#fff'; g.fillRect(Math.round(x),Math.round(y),2,2); }
+  } else {
+    g.fillStyle='#fbfaf6'; g.fillRect(0,0,W,H); g.fillStyle='#111'; g.textBaseline='top';
+    g.font='bold 46px "Microsoft YaHei","PingFang SC",sans-serif'; g.fillText('无处不在的统计',28,22);
+    g.font='22px "Microsoft YaHei","PingFang SC",sans-serif'; g.fillText('观测 = 模糊核 ⊛ 理想 + 噪声',28,90);
+    g.font='16px "Microsoft YaHei","PingFang SC",sans-serif'; g.fillText('去模糊：从“糊掉的平均”里猜回细节',28,128);
+    g.font='12px sans-serif'; g.fillText('The quick brown fox jumps over the lazy dog. 0123456789',28,158);
+    for(let i=0;i<20;i++){ g.fillStyle='#111'; g.fillRect(28+i*10,190,1+(i%3),120); }
+    g.strokeStyle='#0054A6'; for(let k=0;k<9;k++){ g.lineWidth=1+k*0.3; g.beginPath(); g.arc(360,250,8+k*8,0,2*Math.PI); g.stroke(); }
+  }
+  return cv;
+}
+
+// ---------- 载入 ----------
+function loadSource(s){
+  const maxSide=+$('maxSide').value, sw=s.naturalWidth||s.width, sh=s.naturalHeight||s.height;
+  const k=Math.min(1,maxSide/Math.max(sw,sh)), w=Math.max(8,Math.round(sw*k)), h=Math.max(8,Math.round(sh*k));
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const ctx=cv.getContext('2d'); ctx.imageSmoothingQuality='high'; ctx.drawImage(s,0,0,w,h);
+  orig=fromCanvas(cv,$('gray').checked); draw(orig,$('cOrig'));
+  $('imgInfo').textContent=`当前处理尺寸：${w} × ${h}${$('gray').checked?'（灰度）':'（彩色）'}`;
+  schedule(true);
+}
+function reload(){ if(srcObj) loadSource(srcObj); }
+
+// ---------- 事件 ----------
+function onMethod(){ const m=$('method').value; buildParams($('methodParams'),METHOD[m].p,()=>schedule(false)); $('methodHint').textContent=METHOD[m].hint; schedule(false); }
+function onBlurType(){ buildParams($('blurParams'),BLUR[$('blurType').value],()=>schedule(true)); schedule(true); }
+function onEstType(){ const t=$('estType').value; buildParams($('estParams'),BLUR[t],()=>schedule(false));
+  if(t===$('blurType').value){ const cur=readParams($('blurParams'),BLUR[t]); for(const d of BLUR[t]){ const n=$('estParams_'+d.id); n.value=cur[d.id]; n.dispatchEvent(new Event('change')); } }
+  schedule(false); }
+$('blurType').addEventListener('change',onBlurType);
+$('method').addEventListener('change',onMethod);
+$('estType').addEventListener('change',onEstType);
+$('useTrue').addEventListener('change',()=>{ const on=!$('useTrue').checked; $('estWrap').style.display=on?'block':'none';
+  if(on){ $('estType').value=$('blurType').value; onEstType(); } else schedule(false); });
+$('noise_r').addEventListener('input',()=>{ $('noise_n').value=$('noise_r').value; schedule(true); });
+$('noise_n').addEventListener('change',()=>{ let v=+$('noise_n').value; if(!isFinite(v)) v=1; v=Math.min(20,Math.max(0,v)); $('noise_n').value=v; $('noise_r').value=v; schedule(true); });
+$('gray').addEventListener('change',reload);
+$('maxSide').addEventListener('change',reload);
+$('pickBtn').addEventListener('click',()=>$('file').click());
+$('sample').addEventListener('change',()=>{ const v=$('sample').value; if(v==='upload') $('file').click(); else { srcObj=makeSample(v); loadSource(srcObj); } });
+$('file').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const img=new Image();
+  img.onload=()=>{ srcObj=img; $('sample').value='upload'; loadSource(img); };
+  img.onerror=()=>{ $('status').textContent='这张图片无法读取，请换一张（支持 JPG / PNG 等常见格式）。'; };
+  img.src=URL.createObjectURL(f); e.target.value=''; });
+$('dlBtn').addEventListener('click',()=>{ const a=document.createElement('a'); a.download='去模糊结果.png'; a.href=$('cDeb').toDataURL('image/png'); a.click(); });
+for(const [id,cap] of [['cOrig','原图'],['cBlur','模糊图'],['cDeb','去模糊结果']]){
+  $(id).addEventListener('click',()=>{ $('ovImg').src=$(id).toDataURL('image/png'); $('ovCap').textContent=cap; $('overlay').style.display='flex'; }); }
+$('overlay').addEventListener('click',()=>{ $('overlay').style.display='none'; });
+
+// ---------- 启动 ----------
+buildParams($('blurParams'),BLUR.motion,()=>schedule(true));
+buildParams($('methodParams'),METHOD.wiener.p,()=>schedule(false));
+$('methodHint').textContent=METHOD.wiener.hint;
+srcObj=makeSample('text'); loadSource(srcObj);
+</script>
+</body>
+</html>
